@@ -1,0 +1,11 @@
+{
+  "tone_a_hz": 748.5,
+  "tone_b_hz": 991.7,
+  "tolerance_hz": 15,
+  "min_tone_duration_sec": 0.8,
+  "max_gap_sec": 1.0,
+  "detection_threshold": 0.35,
+  "cooldown_sec": 20,
+  "max_alert_sec": 300,
+  "alert_repeat_sec": 2
+}
