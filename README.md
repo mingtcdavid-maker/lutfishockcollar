@@ -31,6 +31,7 @@ cp config.example.json config.json
 | field | meaning |
 |---|---|
 | `min_block_energy` / `min_block_magnitude` | how loud a ~0.2s block must be before its dominant frequency is trusted at all |
+| `min_block_purity` | how much of a block's in-band energy must sit in a single frequency (vs. spread across many, as broadband noise/voices do) before it's trusted; raise this if non-siren noise is triggering false positives |
 | `max_alert_sec` / `alert_repeat_sec` | how long the placeholder alarm keeps sounding, and how often it repeats |
 | `codes` | map of code name → detection spec (see below) |
 
@@ -99,6 +100,41 @@ through it.
 To silence an active alert without killing the script, create a file
 named `ALERT_STOP` in the working directory (e.g. `touch ALERT_STOP` from
 another terminal, or a Shortcuts/Automator button).
+
+## Diagnosing false positives
+
+Every trigger is logged with the last 5 seconds of classified frequencies
+that led up to it, e.g.:
+
+```
+Match confirmed for code 'fire'. Last 5s of classified frequencies leading up to it: [None, 680.0, 685.0, ...]
+```
+
+That tells you which code fired and roughly what the audio actually looked
+like going into it. For a closer look, `--debug` logs every block's
+classified frequency (or `None`), not just triggers — verbose, but useful
+when you're actively trying to catch a false positive in the act:
+
+```
+python3 detector.py run --config config.json --device 2 --log-file overnight.log --debug
+```
+
+Once you know what's causing it, the levers worth trying, roughly in order
+of "try this first" (see the config tables above for what each field does):
+
+1. Raise `min_hold_sec` / `min_duration_sec` — most false positives are
+   short-lived coincidences; real sirens hold a tone deliberately.
+2. Raise `min_alternations` (fire only) — harder for noise to coincidentally
+   alternate between two narrow bands repeatedly.
+3. Raise `min_block_purity` — the strongest general-purpose lever; rejects
+   blocks where the frequency isn't cleanly dominant (broadband noise,
+   voices, TV).
+4. Tighten `tolerance_hz` — last resort; go too far and you risk missing a
+   real page instead, especially given how close `fire` and `ambulance`'s
+   frequencies already are (see Caveats).
+5. If you're using a mic pointed at a speaker, switch to a direct
+   cable/virtual-audio feed (see Audio input above) — removes room noise
+   as a source entirely, often a bigger win than any config change.
 
 ## Testing
 

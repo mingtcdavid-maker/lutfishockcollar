@@ -12,6 +12,7 @@ Usage:
     python3 detector.py analyze --device 2 --seconds 20
     python3 detector.py test-alert
     python3 detector.py run --config config.json --input-wav fire.wav
+    python3 detector.py run --config config.json --device 2 --debug
 """
 import argparse
 import datetime
@@ -20,6 +21,7 @@ import queue
 import sys
 import time
 import wave
+from collections import deque
 
 import numpy as np
 
@@ -50,19 +52,31 @@ def build_detectors(config: dict):
     return {name: codes.build_detector(name, spec) for name, spec in config["codes"].items()}
 
 
-def run_from_stream(block_iter, sample_rate: int, config: dict, log_file=None):
+HISTORY_SECONDS = 5.0
+
+
+def run_from_stream(block_iter, sample_rate: int, config: dict, log_file=None, debug=False):
     detectors = build_detectors(config)
     min_energy = config.get("min_block_energy", 0.01)
     min_mag = config.get("min_block_magnitude", 5.0)
+    min_purity = config.get("min_block_purity", 0.10)
+    history = deque(maxlen=max(1, int(HISTORY_SECONDS / BLOCK_SEC)))
+    block_index = 0
 
     for samples in block_iter:
         freq = dsp.classify_frequency(
-            samples, sample_rate, CLASSIFY_MIN_HZ, CLASSIFY_MAX_HZ, min_energy, min_mag
+            samples, sample_rate, CLASSIFY_MIN_HZ, CLASSIFY_MAX_HZ, min_energy, min_mag, min_purity
         )
+        history.append(freq)
+        if debug:
+            log(f"debug t+{block_index * BLOCK_SEC:6.1f}s freq={freq}", log_file)
         for name, detector in detectors.items():
             if detector.process(freq, BLOCK_SEC):
-                log(f"Match confirmed for code '{name}'.", log_file)
+                trail = [round(f, 1) if f is not None else None for f in history]
+                log(f"Match confirmed for code '{name}'. Last {HISTORY_SECONDS:.0f}s of "
+                    f"classified frequencies leading up to it: {trail}", log_file)
                 alert.trigger_alert(config, code_name=name, log=lambda m: log(m, log_file))
+        block_index += 1
 
 
 def mic_block_iter(device):
@@ -147,9 +161,9 @@ def cmd_run(args):
     log(f"Starting overnight detector for codes: {list(config['codes'])}", args.log_file)
     try:
         if args.input_wav:
-            run_from_stream(wav_block_iter(args.input_wav), SAMPLE_RATE, config, args.log_file)
+            run_from_stream(wav_block_iter(args.input_wav), SAMPLE_RATE, config, args.log_file, debug=args.debug)
         else:
-            run_from_stream(mic_block_iter(args.device), SAMPLE_RATE, config, args.log_file)
+            run_from_stream(mic_block_iter(args.device), SAMPLE_RATE, config, args.log_file, debug=args.debug)
     except KeyboardInterrupt:
         log("Stopped by user.", args.log_file)
     except Exception as exc:  # keep this alive overnight; log and let the caller decide whether to restart
@@ -166,6 +180,8 @@ def main():
     p_run.add_argument("--device", type=int, default=None, help="Input device index (see list-devices)")
     p_run.add_argument("--input-wav", default=None, help="Run against a WAV file instead of live mic (for testing)")
     p_run.add_argument("--log-file", default=None)
+    p_run.add_argument("--debug", action="store_true",
+                        help="Log every block's classified frequency, not just triggers (verbose; useful for tuning)")
     p_run.set_defaults(func=cmd_run)
 
     p_list = sub.add_parser("list-devices", help="List audio input devices")

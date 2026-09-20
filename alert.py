@@ -11,7 +11,9 @@ import threading
 import time
 
 STOP_FILE = "ALERT_STOP"
-SOUND_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sounds", "alarm.mp3")
+SOUND_FILE = "/System/Library/Sounds/Sosumi.aiff"
+# A louder alternative lives at sounds/alarm.mp3 (relative to this file) — swap SOUND_FILE
+# to os.path.join(os.path.dirname(os.path.abspath(__file__)), "sounds", "alarm.mp3") for real deployment.
 
 _alert_lock = threading.Lock()
 _alerting = False

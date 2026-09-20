@@ -24,15 +24,17 @@ def convert_to_wav(src: Path, dst: Path):
 
 
 def triggered_codes(wav_path: Path):
+    import dsp
+
     detectors = detector.build_detectors(CONFIG)
     min_energy = CONFIG.get("min_block_energy", 0.01)
     min_mag = CONFIG.get("min_block_magnitude", 5.0)
+    min_purity = CONFIG.get("min_block_purity", 0.10)
     fired = set()
     for samples in detector.wav_block_iter(str(wav_path)):
-        import dsp
         freq = dsp.classify_frequency(
             samples, detector.SAMPLE_RATE, detector.CLASSIFY_MIN_HZ, detector.CLASSIFY_MAX_HZ,
-            min_energy, min_mag,
+            min_energy, min_mag, min_purity,
         )
         for name, det in detectors.items():
             if det.process(freq, detector.BLOCK_SEC):
