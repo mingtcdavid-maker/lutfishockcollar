@@ -2,8 +2,12 @@
 
 Listens through the night for your fire station's siren codes and fires an
 alert when it hears one. The alert action (`alert.trigger_alert`) is
-currently a **placeholder**: it maxes out macOS volume and loops a loud
-system sound until acknowledged. Swap `alert.py` for whatever the real
+currently a **placeholder**: it maxes out macOS volume and plays that same
+code's own recorded tone twice (`sounds/fire_alert.mp3` /
+`sounds/ambulance_alert.mp3`), then stops on its own. That's deliberate: a
+false positive is short and immediately recognizable as "that's just the
+fire tone" — nobody needs to get up to silence it — and a real positive is
+exactly as recognizable, just at 2am. Swap `alert.py` for whatever the real
 response should be later (lights, SMS, a relay board, etc) — nothing else
 needs to change.
 
@@ -32,7 +36,7 @@ cp config.example.json config.json
 |---|---|
 | `min_block_energy` / `min_block_magnitude` | how loud a ~0.2s block must be before its dominant frequency is trusted at all |
 | `min_block_purity` | how much of a block's in-band energy must sit in a single frequency (vs. spread across many, as broadband noise/voices do) before it's trusted; raise this if non-siren noise is triggering false positives |
-| `max_alert_sec` / `alert_repeat_sec` | how long the placeholder alarm keeps sounding, and how often it repeats |
+| `alert_repeat_count` / `alert_repeat_gap_sec` | how many times the matched code's tone plays, and the gap between plays |
 | `codes` | map of code name → detection spec (see below) |
 
 An `alternating` code (like `fire`):
@@ -97,9 +101,11 @@ The log file records every detection with a timestamp and which code
 matched, so you can review what happened in the morning even if you slept
 through it.
 
-To silence an active alert without killing the script, create a file
+Since each alert is just its code's tone playing twice (a few seconds each,
+see `sounds/`), it stops on its own — you shouldn't normally need to
+silence it manually. If you still want to cut one short, create a file
 named `ALERT_STOP` in the working directory (e.g. `touch ALERT_STOP` from
-another terminal, or a Shortcuts/Automator button).
+another terminal) and it'll stop before its next play.
 
 ## Diagnosing false positives
 
@@ -154,10 +160,12 @@ python3 make_test_page.py --config config.json --code fire --out fire_synthetic.
 python3 detector.py run --config config.json --input-wav fire_synthetic.wav
 ```
 
-To sanity-check the alert itself (volume + sound) on your actual Mac:
+To sanity-check the alert itself (volume + the actual tone, twice) on your
+actual Mac:
 
 ```
-python3 detector.py test-alert --config config.json
+python3 detector.py test-alert --config config.json --code fire
+python3 detector.py test-alert --config config.json --code ambulance
 ```
 
 ## Caveats

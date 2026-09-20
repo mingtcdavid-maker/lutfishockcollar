@@ -2,8 +2,8 @@
   "min_block_energy": 0.01,
   "min_block_magnitude": 5.0,
   "min_block_purity": 0.10,
-  "max_alert_sec": 300,
-  "alert_repeat_sec": 2,
+  "alert_repeat_count": 2,
+  "alert_repeat_gap_sec": 1.0,
   "codes": {
     "fire": {
       "type": "alternating",

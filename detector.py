@@ -150,10 +150,11 @@ def cmd_analyze(args):
 
 
 def cmd_test_alert(args):
-    config = load_config(args.config) if args.config else {"max_alert_sec": 10, "alert_repeat_sec": 2}
-    print("Triggering placeholder alert now (volume to max + repeating sound)...")
-    alert.trigger_alert(config, code_name=args.code)
-    time.sleep(config.get("max_alert_sec", 10) + 1)
+    config = load_config(args.config) if args.config else {}
+    print(f"Triggering placeholder alert now for code {args.code!r} (volume to max + its tone x2)...")
+    thread = alert.trigger_alert(config, code_name=args.code)
+    if thread:
+        thread.join()
 
 
 def cmd_run(args):
