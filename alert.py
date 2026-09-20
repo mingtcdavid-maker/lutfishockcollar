@@ -1,4 +1,4 @@
-"""Placeholder alert action, triggered when the two-tone page is detected.
+"""Placeholder alert action, triggered when a station code is detected.
 
 Swap the body of `trigger_alert` for whatever the real response should be
 later (lights, SMS, siren relay, etc). For now it just wakes a sleeping
@@ -50,7 +50,7 @@ def _blare(max_alert_sec: float, repeat_sec: float, log):
             _alerting = False
 
 
-def trigger_alert(config: dict, log=print):
+def trigger_alert(config: dict, code_name: str = "unknown", log=print):
     """Non-blocking: starts the alert in a background thread if one isn't already running.
 
     Create a file named ALERT_STOP in the working directory to silence it early.
@@ -60,11 +60,11 @@ def trigger_alert(config: dict, log=print):
     global _alerting
     with _alert_lock:
         if _alerting:
-            log("Alert already sounding; new detection logged but not re-triggering.")
+            log(f"Alert already sounding; '{code_name}' detection logged but not re-triggering.")
             return
         _alerting = True
 
-    log("TWO-TONE PAGE DETECTED — triggering alert.")
+    log(f"CODE DETECTED: {code_name!r} — triggering alert.")
     _set_mac_volume_max(log)
     threading.Thread(
         target=_blare,

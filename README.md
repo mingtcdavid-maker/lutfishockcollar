@@ -1,11 +1,23 @@
-# Overnight two-tone page detector
+# Overnight station-code detector
 
-Listens through the night for your station's two-tone sequential page
-(e.g. Motorola Quik-Call II style dispatch alerting) and fires an alert
-when it hears it. The alert action (`alert.trigger_alert`) is currently a
-**placeholder**: it maxes out macOS volume and loops a loud system sound
-until acknowledged. Swap `alert.py` for whatever the real response should
-be later (lights, SMS, a relay board, etc) — nothing else needs to change.
+Listens through the night for your fire station's siren codes and fires an
+alert when it hears one. The alert action (`alert.trigger_alert`) is
+currently a **placeholder**: it maxes out macOS volume and loops a loud
+system sound until acknowledged. Swap `alert.py` for whatever the real
+response should be later (lights, SMS, a relay board, etc) — nothing else
+needs to change.
+
+Two codes are configured out of the box, identified from real reference
+recordings (`samples/`):
+
+- **fire** — an alternating hi-lo warble (~683 Hz / ~505 Hz)
+- **ambulance** — a single sustained tone (~655 Hz) that pulses in volume
+  but never changes pitch
+
+Detection is pattern-based rather than a fixed sequential "tone A then tone
+B" page, because that's what these two codes actually sound like — see
+`codes.py` for the two pattern types (`alternating`, `sustained`) and
+`config.example.json` for how each code is described.
 
 ## Setup
 
@@ -14,27 +26,44 @@ pip install -r requirements.txt
 cp config.example.json config.json
 ```
 
-Edit `config.json`:
+`config.json` top level:
 
 | field | meaning |
 |---|---|
-| `tone_a_hz` / `tone_b_hz` | your station's two tone frequencies, in order |
-| `tolerance_hz` | not currently load-bearing (Goertzel bin width comes from block size), kept for future tightening |
-| `min_tone_duration_sec` | how long each tone must hold before it counts |
-| `max_gap_sec` | max silence/other-audio allowed between tone A ending and tone B starting |
-| `detection_threshold` | tone energy / total block energy needed to count as "present"; raise if you get false triggers, lower if real pages are missed |
-| `cooldown_sec` | ignore further triggers for this long after a match, so one page doesn't re-fire |
+| `min_block_energy` / `min_block_magnitude` | how loud a ~0.2s block must be before its dominant frequency is trusted at all |
 | `max_alert_sec` / `alert_repeat_sec` | how long the placeholder alarm keeps sounding, and how often it repeats |
+| `codes` | map of code name → detection spec (see below) |
 
-**You need to know your station's actual tone frequencies.** If you don't,
-record a real page (or ask your radio tech/dispatch agency) and run:
+An `alternating` code (like `fire`):
+
+| field | meaning |
+|---|---|
+| `freq_a_hz` / `freq_b_hz` | the two frequencies it warbles between |
+| `tolerance_hz` | how far off a block's frequency can be and still count as a match |
+| `min_hold_sec` | how long one tone must hold before counting as a "beat" |
+| `min_alternations` | how many A↔B switches in a row are required to trigger |
+| `max_gap_sec` | silence/noise allowed between beats before the sequence resets |
+| `cooldown_sec` | ignore further triggers for this long after a match |
+
+A `sustained` code (like `ambulance`):
+
+| field | meaning |
+|---|---|
+| `freq_hz` | the tone's frequency |
+| `tolerance_hz` | how far off a block's frequency can be and still count as a match |
+| `min_duration_sec` | how long the tone must be held (dips allowed, see `max_gap_sec`) before triggering |
+| `max_gap_sec` | how long a dip/gap can be before the accumulated duration resets |
+| `cooldown_sec` | ignore further triggers for this long after a match |
+
+**Adding a new code you don't have measured yet?** Record it and run:
 
 ```
 python3 detector.py analyze --seconds 20
 ```
 
 while replaying it — it prints the dominant frequency of each ~0.2s block
-so you can read off the two tones and their durations.
+so you can read off the pattern (alternating between two frequencies, or
+one steady frequency) and its timing.
 
 ## Audio input
 
@@ -63,21 +92,30 @@ python3 detector.py run --config config.json --device 2 --log-file overnight.log
 
 Leave it running in a terminal (or under `caffeinate` so the Mac doesn't
 sleep: `caffeinate -i python3 detector.py run --config config.json ...`).
-The log file records every detection with a timestamp, so you can review
-what happened in the morning even if you slept through it.
+The log file records every detection with a timestamp and which code
+matched, so you can review what happened in the morning even if you slept
+through it.
 
 To silence an active alert without killing the script, create a file
 named `ALERT_STOP` in the working directory (e.g. `touch ALERT_STOP` from
 another terminal, or a Shortcuts/Automator button).
 
-## Testing without a real page
+## Testing
 
-Generate a synthetic recording of your configured tones and run the
-detector against it (no mic or macOS needed for this part):
+Regression-test both real codes against the reference recordings in
+`samples/` (requires `ffmpeg` on PATH to decode them; confirms fire
+triggers only `fire` and ambulance triggers only `ambulance`):
 
 ```
-python3 make_test_page.py --config config.json --out sample_page.wav
-python3 detector.py run --config config.json --input-wav sample_page.wav
+python3 test_samples.py
+```
+
+To try a new/hypothetical code without a real recording, generate a
+synthetic WAV from its config spec:
+
+```
+python3 make_test_page.py --config config.json --code fire --out fire_synthetic.wav
+python3 detector.py run --config config.json --input-wav fire_synthetic.wav
 ```
 
 To sanity-check the alert itself (volume + sound) on your actual Mac:
@@ -88,8 +126,11 @@ python3 detector.py test-alert --config config.json
 
 ## Caveats
 
-This is a personal backup/convenience tool, tuned by hand against one
-config. It is **not** a substitute for your station's official alerting
-system — background noise, a scanner volume that's too low, or slightly
-wrong tone frequencies can all cause missed pages. Test it against real
-traffic for a while before trusting it to wake you up.
+This is a personal backup/convenience tool, tuned by hand against two
+recordings. It is **not** a substitute for your station's official
+alerting system — background noise, a scanner volume that's too low, or a
+code whose measured frequencies drift under real conditions can all cause
+missed or false triggers. Test it against real traffic for a while before
+trusting it to wake you up. `fire`'s 683 Hz and `ambulance`'s 655 Hz are
+only 28 Hz apart; if you see cross-triggers in practice, tighten
+`tolerance_hz` on both before touching anything else.
