@@ -15,8 +15,8 @@ import subprocess
 import threading
 import time
 
-STOP_FILE = "ALERT_STOP"
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STOP_FILE = os.path.join(_BASE_DIR, "ALERT_STOP")
 SOUND_FILES = {
     "fire": os.path.join(_BASE_DIR, "sounds", "fire_alert.mp3"),
     "ambulance": os.path.join(_BASE_DIR, "sounds", "ambulance_alert.mp3"),
@@ -81,7 +81,7 @@ def trigger_alert(config: dict, code_name: str = "unknown", log=print):
     Returns the background thread (for callers that want to wait on it, e.g. test-alert),
     or None if an alert was already sounding.
 
-    Create a file named ALERT_STOP in the working directory to silence it early.
+    Create a file at STOP_FILE (ALERT_STOP next to this script) to silence it early.
     A failure here (e.g. running off macOS) is logged, never raised, so it can't
     take down an overnight detection run.
     """

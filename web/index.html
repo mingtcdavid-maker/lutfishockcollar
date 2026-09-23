@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Station Code Detector</title>
+<style>
+  :root {
+    --bg: #14171c;
+    --panel: #1c2028;
+    --panel-border: #2a2f3a;
+    --text: #e8eaed;
+    --text-dim: #9aa1ad;
+    --accent: #4a90e2;
+    --green: #3ecf8e;
+    --red: #e25c5c;
+    --amber: #e2a83e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 16px;
+    max-width: 640px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 1.4rem;
+    margin: 20px 0 4px;
+  }
+  .subtitle {
+    color: var(--text-dim);
+    font-size: 0.9rem;
+    margin-bottom: 16px;
+  }
+  .disclaimer {
+    background: rgba(226, 168, 62, 0.12);
+    border: 1px solid var(--amber);
+    color: var(--amber);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    margin-bottom: 20px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .card h2 {
+    font-size: 0.95rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-dim);
+    margin: 0 0 12px;
+  }
+  .status-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    flex-shrink: 0;
+  }
+  .dot.running { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .dot.stopped { background: var(--text-dim); }
+  select, button {
+    font: inherit;
+    border-radius: 8px;
+    border: 1px solid var(--panel-border);
+    background: #23272f;
+    color: var(--text);
+    padding: 10px 14px;
+  }
+  select { width: 100%; margin-bottom: 12px; }
+  button {
+    cursor: pointer;
+    font-weight: 600;
+    transition: opacity 0.15s;
+  }
+  button:hover { opacity: 0.85; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn-row button { flex: 1; min-width: 120px; }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: white; }
+  .btn-danger { background: var(--red); border-color: var(--red); color: white; }
+  .btn-silence { background: var(--amber); border-color: var(--amber); color: #1a1a1a; }
+  .btn-test { background: #2a2f3a; }
+  .msg {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    margin-top: 10px;
+    min-height: 1.2em;
+  }
+  .msg.error { color: var(--red); }
+  #log {
+    background: #0e1014;
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    height: 180px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+</style>
+</head>
+<body>
+
+<h1>Station Code Detector</h1>
+<div class="subtitle">Local control panel — runs entirely on this machine.</div>
+
+<div class="disclaimer">
+  <strong>⚠ Not a substitute for official dispatch.</strong>
+  This is a personal aid based on audio pattern-matching. It can miss a real
+  page or trigger falsely on unrelated noise. Do not rely on it as your only
+  means of being notified of a call.
+</div>
+
+<div class="card">
+  <h2>Detector</h2>
+  <div class="status-row">
+    <span class="dot stopped" id="status-dot"></span>
+    <span id="status-text">Checking…</span>
+  </div>
+  <select id="device-select"><option value="">System default input</option></select>
+  <div class="btn-row">
+    <button class="btn-primary" id="start-btn">Start</button>
+    <button class="btn-danger" id="stop-btn">Stop</button>
+  </div>
+  <div class="msg" id="detector-msg"></div>
+</div>
+
+<div class="card">
+  <h2>Active alert</h2>
+  <div class="btn-row">
+    <button class="btn-silence" id="silence-btn">Silence alert</button>
+  </div>
+  <div class="msg" id="silence-msg"></div>
+</div>
+
+<div class="card">
+  <h2>Test volume</h2>
+  <div class="btn-row" id="test-buttons"></div>
+  <div class="msg" id="test-msg"></div>
+</div>
+
+<div class="card">
+  <h2>Log</h2>
+  <div id="log">(no log yet)</div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+async function api(path, options) {
+  const res = await fetch(path, options);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  return data;
+}
+
+function showMsg(el, text, isError) {
+  el.textContent = text;
+  el.classList.toggle("error", !!isError);
+}
+
+async function loadDevices() {
+  try {
+    const { devices } = await api("/api/devices");
+    const select = $("device-select");
+    for (const d of devices) {
+      const opt = document.createElement("option");
+      opt.value = d.index;
+      opt.textContent = `${d.index}: ${d.name}`;
+      select.appendChild(opt);
+    }
+  } catch (e) {
+    // non-fatal; system default option still works
+  }
+}
+
+async function loadCodes() {
+  try {
+    const { codes } = await api("/api/config");
+    const container = $("test-buttons");
+    container.innerHTML = "";
+    for (const code of codes) {
+      const btn = document.createElement("button");
+      btn.className = "btn-test";
+      btn.textContent = `Test ${code}`;
+      btn.onclick = () => testAlert(code);
+      container.appendChild(btn);
+    }
+  } catch (e) {
+    showMsg($("test-msg"), "Could not load configured codes.", true);
+  }
+}
+
+async function refreshStatus() {
+  try {
+    const status = await api("/api/status");
+    const dot = $("status-dot");
+    const text = $("status-text");
+    dot.classList.toggle("running", status.running);
+    dot.classList.toggle("stopped", !status.running);
+    text.textContent = status.running ? `Running (pid ${status.pid})` : "Stopped";
+    $("start-btn").disabled = status.running;
+    $("stop-btn").disabled = !status.running;
+
+    const log = $("log");
+    const wasAtBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 4;
+    log.textContent = status.log_tail.length ? status.log_tail.join("\n") : "(no log yet)";
+    if (wasAtBottom) log.scrollTop = log.scrollHeight;
+  } catch (e) {
+    $("status-text").textContent = "Could not reach local server";
+  }
+}
+
+async function startDetector() {
+  showMsg($("detector-msg"), "");
+  try {
+    const device = $("device-select").value;
+    await api("/api/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ device: device === "" ? null : Number(device) }),
+    });
+    refreshStatus();
+  } catch (e) {
+    showMsg($("detector-msg"), e.message, true);
+  }
+}
+
+async function stopDetector() {
+  showMsg($("detector-msg"), "");
+  try {
+    await api("/api/stop", { method: "POST" });
+    refreshStatus();
+  } catch (e) {
+    showMsg($("detector-msg"), e.message, true);
+  }
+}
+
+async function silenceAlert() {
+  showMsg($("silence-msg"), "");
+  try {
+    await api("/api/silence", { method: "POST" });
+    showMsg($("silence-msg"), "Sent. Alert will stop before its next play.");
+  } catch (e) {
+    showMsg($("silence-msg"), e.message, true);
+  }
+}
+
+async function testAlert(code) {
+  showMsg($("test-msg"), "");
+  try {
+    await api("/api/test-alert", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+    showMsg($("test-msg"), `Playing ${code} tone at max volume…`);
+  } catch (e) {
+    showMsg($("test-msg"), e.message, true);
+  }
+}
+
+$("start-btn").onclick = startDetector;
+$("stop-btn").onclick = stopDetector;
+$("silence-btn").onclick = silenceAlert;
+
+loadDevices();
+loadCodes();
+refreshStatus();
+setInterval(refreshStatus, 2000);
+</script>
+
+</body>
+</html>

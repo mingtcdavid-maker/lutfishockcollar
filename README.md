@@ -23,6 +23,10 @@ B" page, because that's what these two codes actually sound like — see
 `codes.py` for the two pattern types (`alternating`, `sustained`) and
 `config.example.json` for how each code is described.
 
+A local web panel (`webapp.py` + `web/index.html`) is also available for
+start/stop, silencing, and volume testing without touching the terminal —
+see "Running it overnight" below.
+
 ## Setup
 
 ```
@@ -91,6 +95,8 @@ python3 detector.py list-devices
 
 ## Running it overnight
 
+**Option A — command line:**
+
 ```
 python3 detector.py run --config config.json --device 2 --log-file overnight.log
 ```
@@ -101,11 +107,25 @@ The log file records every detection with a timestamp and which code
 matched, so you can review what happened in the morning even if you slept
 through it.
 
+**Option B — local web panel:**
+
+```
+python3 webapp.py
+```
+
+Then open `http://127.0.0.1:8765` in a browser on the same Mac. The panel
+lets you start/stop the detector, pick an input device, silence an active
+alert, test the alarm volume for each code, and watch a live log tail —
+all from the browser instead of the terminal. It's a plain local Flask
+server bound to `127.0.0.1` (not reachable from other machines) and does
+not replace `caffeinate` — the Mac still needs to stay awake for either
+option (see above).
+
 Since each alert is just its code's tone playing twice (a few seconds each,
 see `sounds/`), it stops on its own — you shouldn't normally need to
-silence it manually. If you still want to cut one short, create a file
-named `ALERT_STOP` in the working directory (e.g. `touch ALERT_STOP` from
-another terminal) and it'll stop before its next play.
+silence it manually. If you still want to cut one short: click "Silence
+alert" in the web panel, or create a file named `ALERT_STOP` in this repo's
+directory (e.g. `touch ALERT_STOP`) — it'll stop before its next play.
 
 ## Diagnosing false positives
 
